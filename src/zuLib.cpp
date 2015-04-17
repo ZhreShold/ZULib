@@ -16,7 +16,8 @@
 */
 /***********************************************************************/
 
-#include "ZULib.hpp"
+#include "zuLib.hpp"
+#include <limits>
 
 #if defined(_WIN32)
 #include <Windows.h>
@@ -308,7 +309,7 @@ namespace zz
 		if (ms <= 0)
 		{
 			// disable timer if ms <= 0
-			end = DBL_MAX;
+			end = (std::numeric_limits<double>::max)();
 		}
 
 		while (key == -1)
@@ -332,10 +333,15 @@ namespace zz
 
 	BaseFile::BaseFile()
 	{
+		this->flag = INIT;
+		this->openmode = std::ios::in;
 	}
 
-	BaseFile::BaseFile(const String &file, Openmode openmode)
+	BaseFile::BaseFile(const String &file, std::ios_base::openmode openmode)
 	{
+
+		this->flag = INIT;
+
 		// detect if file exists
 		if (file_exists(file))
 		{
@@ -370,10 +376,6 @@ namespace zz
 		{
 			warning("File stream already opened!");
 		}
-	}
-
-	TextFile::TextFile()
-	{
 	}
 
 

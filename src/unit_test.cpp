@@ -16,7 +16,7 @@
 */
 /***********************************************************************/
 
-#include "ZULib.hpp"
+#include "zuLib.hpp"
 using namespace zz;
 
 void test_time()
@@ -39,7 +39,7 @@ void test_msg()
 void test_file()
 {
 	Println("\nTesting text file\n");
-	TextFile tf("../../cache/oxc1.txt");
+	TextFile tf("../../LICENSE");
 	Timer t;
 	Println(tf.count_lines());
 	Println("Time elapsed: " << t.get_elapsed_time_ms() << "ms");
@@ -48,7 +48,7 @@ void test_file()
 	int s = 0;
 	int limit = 10;
 
-	int ret = tf.goto_line(10000);
+	int ret = tf.goto_line(3);
 	Println("jumped to line: " << ret);
 
 	s = tf.next_line(line);

@@ -34,6 +34,8 @@
 #include <vector>
 #include <climits>
 #include <sstream>
+#include <cstdlib>
+#include <cmath>
 
 
 
@@ -98,7 +100,7 @@ inline void info_debug(const String &msg, bool newline = true)
 #endif
 }
 
-#define SSTR( x ) (dynamic_cast< std::ostringstream & >( std::ostringstream() << x).str())
+#define SSTR( x ) (dynamic_cast< std::ostringstream & >( std::ostringstream() << std::dec << x).str())
 // print error and throw
 #define Error(err) (error(SSTR(err)))
 // print warning, continue
@@ -158,7 +160,7 @@ namespace zz
 	/// <returns>The nearest interger value.</returns>
 	inline int round(double value)
 	{
-#if ((defined _MSC_VER && defined _M_X64) || (defined __GNUC__ && defined __x86_64__ && defined __SSE2__ && !defined __APPLE__)) && !defined(__CUDACC__)
+#if ((defined _MSC_VER && defined _M_X64) || (defined __GNUC__ && defined __x86_64__ && defined __SSE2__ && !defined __APPLE__)) && !defined(__CUDACC__) && 0
 		__m128d t = _mm_set_sd(value);
 		return _mm_cvtsd_si32(t);
 #elif defined _MSC_VER && defined _M_IX86
@@ -354,8 +356,6 @@ namespace zz
 	}
 	
 	// --------------------------------- FILE IO -------------------------------//
-
-	typedef std::ios_base::open_mode Openmode;
 	class BaseFile
 	{
 
@@ -364,7 +364,7 @@ namespace zz
 
 	public:
 		BaseFile();
-		BaseFile(const String &file, Openmode openmode = std::ios_base::in);
+		BaseFile(const String &file, std::ios_base::openmode openmode = std::ios_base::in);
 		virtual ~BaseFile();
 
 		static inline bool file_exists(const String& name)
@@ -382,7 +382,7 @@ namespace zz
 		}
 
 		void open();
-		void open(const String &file, Openmode openmode = std::ios_base::in) 
+		void open(const String &file, std::ios_base::openmode openmode = std::ios_base::in)
 		{ 
 			this->openmode = openmode; 
 			this->path = file;
@@ -393,16 +393,15 @@ namespace zz
 	protected:
 		std::fstream	fp;
 		String			path;
-		int				flag = INIT;
-		Openmode		openmode = std::ios_base::in;
+		int				flag;
+		std::ios_base::openmode		openmode;
 
 	};
 
 	class TextFile : public BaseFile
 	{
 	public:
-		TextFile();
-		TextFile(const String &file, Openmode openmode = std::ios_base::in) : BaseFile(file, openmode){};
+		TextFile(const String &file, std::ios_base::openmode openmode = std::ios_base::in) : BaseFile(file, openmode){};
 		~TextFile();
 		
 		uint64 count_lines();
@@ -414,7 +413,7 @@ namespace zz
 	{
 	public:
 		BinaryFile();
-		BinaryFile(const String &file, Openmode openmode = std::ios_base::in) : BaseFile(file, openmode) { openmode |= std::ios_base::binary; };
+		BinaryFile(const String &file, std::ios_base::openmode openmode = std::ios::in) : BaseFile(file, openmode) { openmode |= std::ios_base::binary; };
 		~BinaryFile();
 
 	};
