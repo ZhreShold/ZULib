@@ -58,7 +58,7 @@ typedef unsigned long long	uint64;		//!< unsigned 64-bit integer
 typedef long long			int64;		//!< signed 64-bit integer
 typedef std::string			String;		//!< STL string
 typedef std::vector<int32>	Veci;		//!< signed 32-bit integer STL vector
-
+typedef std::vector<String> Vecstr;		//!< STL string STL vector
 
 
 // ----------------------- Error/Warn/Info handling ---------------------//
@@ -321,6 +321,12 @@ namespace zz
 	
 	// ----------------------------------- Time ---------------------------------//
 	
+	/// <summary>
+	/// Time is measured since an arbitrary and OS-dependent start time.
+	/// The returned real time is only useful for computing an elapsed time
+	/// between two calls to this function.
+	/// </summary>
+	/// <returns>Returns the real time, in seconds, or -1.0 if an error occurred.</returns>
 	double get_real_time();
 
 	class Timer
@@ -340,10 +346,16 @@ namespace zz
 
 	private:
 
-		double timestamp;
+		double timestamp_;
 	};
 
 	// ----------------------------------- I/O ---------------------------------//
+
+	/// <summary>
+	/// wait for the specficed ms until keypressed
+	/// </summary>
+	/// <param name="ms">The ms to wait.</param>
+	/// <returns>The key pressed(ASC-II not guaranteed).</returns>
 	int waitkey(double ms = -1.0);
 
 	/// <summary>
@@ -356,6 +368,10 @@ namespace zz
 	}
 	
 	// --------------------------------- FILE IO -------------------------------//
+
+	/// <summary>
+	/// Base File Container
+	/// </summary>
 	class BaseFile
 	{
 
@@ -364,62 +380,244 @@ namespace zz
 
 	public:
 		BaseFile();
-		BaseFile(const String &file, std::ios_base::openmode openmode = std::ios_base::in);
+		BaseFile(String file, std::ios_base::openmode openmode = std::ios_base::in);
 		virtual ~BaseFile();
 
-		static inline bool file_exists(const String& name)
-		{
-			std::ifstream f(name.c_str());
-			if (f.good())
-			{
-				f.close();
-				return true;
-			}
-			else {
-				f.close();
-				return false;
-			}
-		}
-
 		void open();
-		void open(const String &file, std::ios_base::openmode openmode = std::ios_base::in)
+		void open(String file, std::ios_base::openmode openmode = std::ios_base::in)
 		{ 
-			this->openmode = openmode; 
-			this->path = file;
+			this->openmode_ = openmode; 
+			this->path_ = file;
 			open();
 		}
-		bool is_open() { return fp.is_open(); }
+		bool is_open() { return fp_.is_open(); }
 
 	protected:
-		std::fstream	fp;
-		String			path;
-		int				flag;
-		std::ios_base::openmode		openmode;
+		std::fstream	fp_;
+		String			path_;
+		int				flag_;
+		std::ios_base::openmode		openmode_;
 
 	};
 
+	/// <summary>
+	/// A text only file derived from BaseFile
+	/// </summary>
 	class TextFile : public BaseFile
 	{
 	public:
-		TextFile(const String &file, std::ios_base::openmode openmode = std::ios_base::in) : BaseFile(file, openmode){};
+		TextFile(String file, std::ios_base::openmode openmode = std::ios_base::in) : BaseFile(file, openmode){};
 		~TextFile();
 		
+		/// <summary>
+		/// Count number of lines in text file. Note that \r(CR) only deprecated(ancient) Mac OS won't be supported.
+		/// </summary>
+		/// <returns>
+		/// Number of Lines
+		/// </returns>
 		uint64 count_lines();
+
+		/// <summary>
+		/// Get next line of opened file
+		/// </summary>
+		/// <param name="line">The next line.</param>
+		/// <returns>Number of characters in line if success, -1 or 0 if fail</returns>
 		int next_line(String &line);
+
+		/// <summary>
+		/// Goto the specified line at n, if n exceed document length, will goto the last line.
+		/// </summary>
+		/// <param name="n">The n.</param>
+		/// <returns>The line jumped to</returns>
 		int goto_line(int n);
 	};
 
+	/// <summary>
+	/// A binary only file derived from BaseFile 
+	/// </summary>
 	class BinaryFile : public BaseFile
 	{
 	public:
 		BinaryFile();
-		BinaryFile(const String &file, std::ios_base::openmode openmode = std::ios::in) : BaseFile(file, openmode) { openmode |= std::ios_base::binary; };
+		BinaryFile(String file, std::ios_base::openmode openmode = std::ios::in) : BaseFile(file, openmode) { openmode |= std::ios_base::binary; };
 		~BinaryFile();
 
 	};
-	
 
-	
+	// ------------------------------- OS DIRECTORY -----------------------------//
+
+	/// <summary>
+	/// Basic file or directory path container
+	/// </summary>
+	class Path
+	{
+	public:
+		Path(String path) { this->path_ = path; };
+
+		/// <summary>
+		/// Return absolute path of the specified reletive path.
+		/// </summary>
+		/// <param name="reletivePath">The reletive path.</param>
+		/// <returns>The absolute path.</returns>
+		static String get_real_path(String reletivePath);
+
+		/// <summary>
+		/// Get current working directory.
+		/// </summary>
+		/// <returns>Current working directory.</returns>
+		static String get_cwd();
+
+		/// <summary>
+		/// Remove substrings from the specified string.
+		/// </summary>
+		/// <param name="substring">The substring.</param>
+		/// <param name="toTrim">To string to trim from.</param>
+		inline static void remove_substring(const String & substring, String &toTrim)
+		{
+			String::size_type i = toTrim.find(substring);
+			if (i != String::npos)
+			{
+				toTrim.erase(i, substring.length());
+			}
+		}
+
+		/// <summary>
+		/// Check if the specified path is a valid directory.
+		/// </summary>
+		/// <param name="path">The path.</param>
+		/// <returns>1 if directory, 0 if file, -1 otherwise</returns>
+		static int is_directory(String path);
+
+		/// <summary>
+		/// Check if the specified path exists.
+		/// </summary>
+		/// <param name="path">The path.</param>
+		/// <returns>1 if exist, 0 if not exist, -1 for other possible situations</returns>
+		static int is_exist(String path);
+
+		/// <summary>
+		/// Convert backslashes to forward slashes if any.
+		/// </summary>
+		/// <param name="orig">The original path.</param>
+		/// <returns>Reformed path.</returns>
+		static String reform_backslash(String orig);
+
+		/// <summary>
+		/// Check if is directory, member function
+		/// </summary>
+		/// <returns>1 if directory, 0 if file, -1 otherwise</returns>
+		int dir() { return is_directory(this->path_); };
+
+		/// <summary>
+		/// Check if path exists.
+		/// </summary>
+		/// <returns>1 if exist, 0 if not exist, -1 for other possible situations</returns>
+		int exist() { return is_exist(this->path_); };
+
+		/// <summary>
+		/// Prune directory of full path
+		/// </summary>
+		/// <returns>Directory</returns>
+		String get_dir();
+
+		/// <summary>
+		/// Prune pure filename without extension
+		/// </summary>
+		/// <returns>Pure filename</returns>
+		String get_basename();
+
+		/// <summary>
+		/// Get extension
+		/// </summary>
+		/// <returns>Extension or empty string(if no extension)</returns>
+		String get_extension();
+
+		/// <summary>
+		/// Get full path
+		/// </summary>
+		/// <returns>Full path</returns>
+		String str() { return this->path_; };
+
+	private:
+		String path_;
+	};
+
+	class Dir
+	{
+	public:
+		Dir() { recursive_ = 0; };
+		Dir(String path, int recurse = 0, int showHidden = 0) { search(path, recurse, showHidden); };
+
+		/// <summary>
+		/// Search recursively?
+		/// </summary>
+		/// <returns>1 if true, 0 otherwise</returns>
+		int is_recursive() { return recursive_; };
+
+		/// <summary>
+		/// Is hidden file/directory shown?
+		/// </summary>
+		/// <returns>1 if true, 0 otherwise</returns>
+		int is_show_hidden() { return showHidden_; };
+
+		/// <summary>
+		/// Set recursion mode
+		/// </summary>
+		/// <param name="r">Use recursion(1) or not(0).</param>
+		void set_recursive(int r) { recursive_ = r; };
+
+		/// <summary>
+		/// Set whether to show hidden files/directories.
+		/// </summary>
+		/// <param name="s">Show hidden(1) or not(0).</param>
+		void set_show_hidden(int s) { showHidden_ = s; };
+
+		/// <summary>
+		/// Return root path of this directory
+		/// </summary>
+		/// <returns>Root path</returns>
+		String str() { return root_; };
+
+		/// <summary>
+		/// List files
+		/// </summary>
+		/// <param name="abosolute">Use absolute path or not.</param>
+		/// <returns>Vector of filenames in String.</returns>
+		Vecstr list_files(int absolute = 0);
+
+		/// <summary>
+		/// Set root given the specified path.
+		/// </summary>
+		/// <param name="path">The path.</param>
+		void set_root(String path);
+
+		/// <summary>
+		/// Get files in this directory
+		/// </summary>
+		/// <returns>files</returns>
+		const std::vector<String>& get_files() { return files_; };
+
+		/// <summary>
+		/// Get sub-folders in this directory
+		/// </summary>
+		/// <returns>sub-folders</returns>
+		const std::vector<Dir>& get_subfolders() { return childs_; };
+
+		void search();
+		void search(String path, int recurse = 0, int showHidden = 0) 
+		{ 
+			set_root(path); 
+			set_recursive(recurse);
+			set_show_hidden(showHidden);
+			search(); 
+		};
+	private:
+		int		recursive_;
+		int		showHidden_;
+		String	root_;
+		std::vector<String>		files_;
+		std::vector<Dir>		childs_;
+	};
 }
 
 
