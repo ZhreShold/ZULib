@@ -452,7 +452,7 @@ namespace zz
 	class Path
 	{
 	public:
-		Path(String path) { this->path_ = path; };
+		Path(String path) { this->path_ = reform(path); };
 
 		/// <summary>
 		/// Return absolute path of the specified reletive path.
@@ -496,11 +496,11 @@ namespace zz
 		static int is_exist(String path);
 
 		/// <summary>
-		/// Convert backslashes to forward slashes if any.
+		/// Convert backslashes to trailing slashes if any and remove duplicate slashes
 		/// </summary>
 		/// <param name="orig">The original path.</param>
 		/// <returns>Reformed path.</returns>
-		static String reform_backslash(String orig);
+		static String reform(String orig);
 
 		/// <summary>
 		/// Check if is directory, member function
@@ -539,6 +539,12 @@ namespace zz
 		String str() { return this->path_; };
 
 		/// <summary>
+		/// Set path.
+		/// </summary>
+		/// <param name="path">The new path.</param>
+		void set_path(String path) { path_ = reform(path); };
+
+		/// <summary>
 		/// Match wildcards
 		/// </summary>
 		/// <param name="first">The wildcard char string.</param>
@@ -556,6 +562,8 @@ namespace zz
 	public:
 		Dir() { recursive_ = 0; showHidden_ = 0; };
 		Dir(String path, int recurse = 0, int showHidden = 0) { search(path, recurse, showHidden); };
+
+		static int mk_dir(String dir);
 
 		/// <summary>
 		/// Search recursively?

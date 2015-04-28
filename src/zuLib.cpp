@@ -498,7 +498,7 @@ namespace zz
 		{
 			String ret(buffer);
 			free(buffer);
-			return reform_backslash(ret);
+			return reform(ret);
 		}
 #else
 #ifdef _PC_PATH_MAX
@@ -606,7 +606,7 @@ namespace zz
 		// now good to return
 		String ret(buffer);
 		free(buffer);
-		ret = reform_backslash(ret);
+		ret = reform(ret);
 		return ret;
 #else
 #ifdef PATH_MAX
@@ -629,7 +629,7 @@ namespace zz
 		{
 			String ret(realPath);
 			free(realPath);
-			return ret;
+			return reform(ret);
 		}
 		else
 		{
@@ -710,9 +710,21 @@ namespace zz
 #endif
 	}
 
-	String Path::reform_backslash(String orig)
+
+
+	String Path::reform(String orig)
 	{
 		std::replace(orig.begin(), orig.end(), '\\', '/');
+
+		struct both_slashes {
+			bool operator()(char a, char b) const {
+				return a == '/' && b == '/';
+			}
+		};
+
+		orig.erase(std::unique(orig.begin(), orig.end(), both_slashes()), orig.end());
+
+
 		return orig;
 	}
 
@@ -795,7 +807,39 @@ namespace zz
 		return false;
 	}
 
+	int Dir::mk_dir(String dir)
+	{
+		Path p(dir);
+		String target = p.str();
+		for (String::iterator i = target.begin(); i != target.end(); i++)
+		{
+			if (*i == '/')
+			{
+				String tmp = target.substr(0, i - target.begin() + 1);
+#ifdef _WIN32
+				CreateDirectoryA(tmp.c_str(), NULL);
+#else
+				mkdir(tmp.c_str(), 0755);
+#endif
+			}
+		}
 
+#ifdef _WIN32
+		if (CreateDirectory(target.c_str(), NULL) ||
+			ERROR_ALREADY_EXISTS == GetLastError())
+		{
+			return 1;
+		}
+
+#else
+		if (mkdir(target.c_str(), 0755) == 0 || errno == EEXIST)
+		{
+			return 1;
+		}
+#endif
+
+		return 0;
+	}
 
 	void Dir::set_root(String path)
 	{

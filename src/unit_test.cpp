@@ -68,14 +68,14 @@ String put_match(bool ret)
 void test_dir()
 {
 	Println("\n\nTesting directories!");
-	Println("Dir exist: " << zz::Path::is_exist("D:/Dev/vs_projects/ZULib/cache"));
-	Println("File exist: " << zz::Path::is_exist("D:/Dev/vs_projects/ZULib/cache/graf.jpg"));
-	Println("No exist: " << zz::Path::is_exist("D:/Dev/vs_projects/ZULib/bla.jpg"));
-	Println("Dir: " << zz::Path::is_directory("D:/Dev/vs_projects/ZULib/cache"));
-	Println("File: " << zz::Path::is_directory("D:/Dev/vs_projects/ZULib/cache/key1.txt"));
-	Println("No exist: " << zz::Path::is_directory("D:/Dev/vs_projects/ZULib/cachecache/something.txt"));
+	Println("Dir exist: " << zz::Path::is_exist("../../src"));
+	Println("File exist: " << zz::Path::is_exist("../../README.md"));
+	Println("No exist: " << zz::Path::is_exist("../../bla.jpg"));
+	Println("Dir: " << zz::Path::is_directory("../../build"));
+	Println("File: " << zz::Path::is_directory("../../LICENSE"));
+	Println("No exist: " << zz::Path::is_directory("../../something.txt"));
 
-	zz::Path p("/woj/slfjd/xljfl.some_extension");
+	zz::Path p("/very//messy//path///////slfjd///xljfl.some_extension");
 	Println("Orig: " << p.str());
 	Println("Exist?: " << p.exist());
 	Println("Dir: " << p.get_dir());
@@ -106,7 +106,7 @@ void test_dir()
 		Println(list[i]);
 	}
 
-	String toabs = zz::Path::get_real_path("..\\..\\ojwf\\wo.jpg");
+	String toabs = zz::Path::get_real_path("../../LICENSE");
 	Println("Get realpath : " << toabs);
 	Println("Get cwd: " << zz::Path::get_cwd());
 
@@ -114,6 +114,9 @@ void test_dir()
 	Println(put_match(zz::Path::wildcard_match("ge?ks*", "geeksforgeeks")));
 	Println(put_match(zz::Path::wildcard_match("*pqrs", "pqrst")));
 	Println(put_match(zz::Path::wildcard_match("*.jpg", "owjfsdlfjl.jpg")));
+
+	Println("\nMake dir: ");
+	Println(zz::Dir::mk_dir("../../newfolder/newfolder2/newfolder3"));
 }
 
 int main()
