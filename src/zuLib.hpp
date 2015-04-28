@@ -538,14 +538,23 @@ namespace zz
 		/// <returns>Full path</returns>
 		String str() { return this->path_; };
 
+		/// <summary>
+		/// Match wildcards
+		/// </summary>
+		/// <param name="first">The wildcard char string.</param>
+		/// <param name="second">The string to match.</param>
+		/// <returns>True if matches, false otherwise.</returns>
+		static bool wildcard_match(const char *first, const char *second);
+
 	private:
+		
 		String path_;
 	};
 
 	class Dir
 	{
 	public:
-		Dir() { recursive_ = 0; };
+		Dir() { recursive_ = 0; showHidden_ = 0; };
 		Dir(String path, int recurse = 0, int showHidden = 0) { search(path, recurse, showHidden); };
 
 		/// <summary>
@@ -564,13 +573,13 @@ namespace zz
 		/// Set recursion mode
 		/// </summary>
 		/// <param name="r">Use recursion(1) or not(0).</param>
-		void set_recursive(int r) { recursive_ = r; };
+		void set_recursive(int recursive) { recursive_ = recursive; };
 
 		/// <summary>
 		/// Set whether to show hidden files/directories.
 		/// </summary>
 		/// <param name="s">Show hidden(1) or not(0).</param>
-		void set_show_hidden(int s) { showHidden_ = s; };
+		void set_show_hidden(int showHidden) { showHidden_ = showHidden; };
 
 		/// <summary>
 		/// Return root path of this directory
@@ -583,7 +592,16 @@ namespace zz
 		/// </summary>
 		/// <param name="abosolute">Use absolute path or not.</param>
 		/// <returns>Vector of filenames in String.</returns>
-		Vecstr list_files(int absolute = 0);
+		Vecstr list_files(int absolutePath = 0);
+
+		/// <summary>
+		/// List files given the specified wildcards to match.
+		/// </summary>
+		/// <param name="wildcards">The wildcards.</param>
+		/// <param name="caseSensitive">Is case sensitive?.</param>
+		/// <param name="absolutePath">Use absolute path?.</param>
+		/// <returns>Vector of filenames in String.</returns>
+		Vecstr list_files(Vecstr wildcards, int caseSensitive = 0, int absolutePath = 0);
 
 		/// <summary>
 		/// Set root given the specified path.

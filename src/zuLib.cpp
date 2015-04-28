@@ -19,6 +19,7 @@
 #include "zuLib.hpp"
 #include <limits>
 #include <algorithm>
+#include <cctype>
 
 #if defined(_WIN32)
 #include <Windows.h>
@@ -769,6 +770,33 @@ namespace zz
 	}
 
 
+	bool Path::wildcard_match(const char *first, const char * second)
+	{
+		// If we reach at the end of both strings, we are done
+		if (*first == '\0' && *second == '\0')
+			return true;
+
+		// Make sure that the characters after '*' are present in second string.
+		// This function assumes that the first string will not contain two
+		// consecutive '*' 
+		if (*first == '*' && *(first + 1) != '\0' && *second == '\0')
+			return false;
+
+		// If the first string contains '?', or current characters of both 
+		// strings match
+		if (*first == '?' || *first == *second)
+			return wildcard_match(first + 1, second + 1);
+
+		// If there is *, then there are two possibilities
+		// a) We consider current character of second string
+		// b) We ignore current character of second string.
+		if (*first == '*')
+			return wildcard_match(first + 1, second) || wildcard_match(first, second + 1);
+		return false;
+	}
+
+
+
 	void Dir::set_root(String path)
 	{
 		path = Path::get_real_path(path);
@@ -912,5 +940,40 @@ namespace zz
 			}
 		}
 		return fileList;
+	}
+
+
+	Vecstr Dir::list_files(Vecstr wildcards, int caseSensitive, int absolutePath)
+	{
+		Vecstr rawList = list_files(absolutePath);
+
+		if (wildcards.size() < 1)
+		{
+			// no any filter, just return all file list
+			return rawList;
+		}
+
+		if (caseSensitive < 1)
+		{
+			// not case sensitive
+			for (Vecstr::iterator j = wildcards.begin(); j != wildcards.end(); j++)
+			{
+				std::transform(j->begin(), j->end(), j->begin(), tolower);
+			}
+		}
+
+		Vecstr retList;
+		for (Vecstr::iterator i = rawList.begin(); i != rawList.end(); i++)
+		{
+			for (Vecstr::iterator j = wildcards.begin(); j != wildcards.end(); j++)
+			{
+				if (Path::wildcard_match(j->c_str(), i->c_str()))
+				{
+					retList.push_back(*i);
+				}
+			}
+		}
+
+		return retList;
 	}
 }

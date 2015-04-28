@@ -60,6 +60,11 @@ void test_file()
 	}
 }
 
+String put_match(bool ret)
+{
+	return ret ? String("Yes") : String("No");
+}
+
 void test_dir()
 {
 	Println("\n\nTesting directories!");
@@ -70,7 +75,7 @@ void test_dir()
 	Println("File: " << zz::Path::is_directory("D:/Dev/vs_projects/ZULib/cache/key1.txt"));
 	Println("No exist: " << zz::Path::is_directory("D:/Dev/vs_projects/ZULib/cachecache/something.txt"));
 
-	zz::Path p("/woj/slfjd/xljfl");
+	zz::Path p("/woj/slfjd/xljfl.some_extension");
 	Println("Orig: " << p.str());
 	Println("Exist?: " << p.exist());
 	Println("Dir: " << p.get_dir());
@@ -83,19 +88,20 @@ void test_dir()
 	Println("Creation time: " << t.get_elapsed_time_ms() << "ms");
 	std::vector<String> files = dir.get_files();
 	std::vector<Dir> subfolders = dir.get_subfolders();
-	for (int i = 0; i < files.size(); i++)
-	{
-		Println("Sub files: " << files[i]);
-	}
-	for (int i = 0; i < subfolders.size(); i++)
+	//for (size_t i = 0; i < files.size(); i++)
+	//{
+	//	Println("Sub files: " << files[i]);
+	//}
+	for (size_t i = 0; i < subfolders.size(); i++)
 	{
 		Println("Sub folders: " << subfolders[i].str());
 	}
 
 	Println("------------------------------");
-	Vecstr list = dir.list_files();
+	const char *wildcards[] = { "*.jpg", "*.txt" };
+	Vecstr list = dir.list_files(Vecstr(wildcards, wildcards+2));
 	Println("Overall time: " << t.get_elapsed_time_ms() << "ms");
-	for (int i = 0; i < list.size(); i++)
+	for (size_t i = 0; i < list.size(); i++)
 	{
 		Println(list[i]);
 	}
@@ -103,6 +109,11 @@ void test_dir()
 	String toabs = zz::Path::get_real_path("..\\..\\ojwf\\wo.jpg");
 	Println("Get realpath : " << toabs);
 	Println("Get cwd: " << zz::Path::get_cwd());
+
+	Println(put_match(zz::Path::wildcard_match("g*ks", "geeks")));
+	Println(put_match(zz::Path::wildcard_match("ge?ks*", "geeksforgeeks")));
+	Println(put_match(zz::Path::wildcard_match("*pqrs", "pqrst")));
+	Println(put_match(zz::Path::wildcard_match("*.jpg", "owjfsdlfjl.jpg")));
 }
 
 int main()
