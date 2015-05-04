@@ -21,86 +21,80 @@
 #include <algorithm>
 #include <cctype>
 
-#if defined(_WIN32)
+
+#ifndef ZULIB_OS
+#if defined(unix)        || defined(__unix)      || defined(__unix__) \
+	|| defined(linux) || defined(__linux) || defined(__linux__) \
+	|| defined(sun) || defined(__sun) \
+	|| defined(BSD) || defined(__OpenBSD__) || defined(__NetBSD__) \
+	|| defined(__FreeBSD__) || defined (__DragonFly__) \
+	|| defined(sgi) || defined(__sgi) \
+	|| (defined(__MACOSX__) || defined(__APPLE__)) \
+	|| defined(__CYGWIN__) || defined(__MINGW32__)
+#define ZULIB_OS 1
+#elif defined(_MSC_VER) || defined(WIN32)  || defined(_WIN32) || defined(__WIN32__) \
+	|| defined(WIN64)    || defined(_WIN64) || defined(__WIN64__)
+#define ZULIB_OS 0
+#else
+#error Unable to support this unknown OS.
+#endif
+#elif !(ZULIB_OS==0 || ZULIB_OS==1)
+#error ZULIB: Invalid configuration variable 'ZULIB_OS'.
+#error (correct values are '0 = Microsoft Windows', '1 = Unix-like OS').
+#endif
+
+#if ZULIB_OS == 0
 #include <Windows.h>
 #include <direct.h>
+#include <conio.h>
+#include <io.h>
+#elif ZULIB_OS == 1
 
-#elif defined(__unix__) || defined(__unix) || defined(unix) || (defined(__APPLE__) && defined(__MACH__))
+// Apple Mac_OS_X specific
+#if defined(__MACH__) || defined(__APPLE__)	
+#include <mach/mach.h>
+#include <mach/mach_time.h>
+#endif
+
 #include <unistd.h>	/* POSIX flags */
 #include <time.h>	/* clock_gettime(), time() */
 #include <sys/time.h>	/* gethrtime(), gettimeofday() */
 #include <sys/stat.h>
 #include <dirent.h>
 #include <errno.h>
-
-#if defined(__MACH__) && defined(__APPLE__)
-#include <mach/mach.h>
-#include <mach/mach_time.h>
-#endif
-
-#else
-#error "Unable to support this unknown OS."
-#endif
-
-#if defined(_WIN32)
-#include <conio.h>
-
-#elif defined(__unix__) || defined(__unix) || defined(unix) || (defined(__APPLE__) && defined(__MACH__))
-#include <unistd.h>	/* POSIX flags */
+#include <stdio.h>
 #include <termios.h>
-#include <stdlib.h>
 #include <string.h>
-#include <sys/select.h>
+#include <fcntl.h>
 
-struct termios orig_termios;
-int termios_status = 0;
-
-void reset_terminal_mode()
-{
-	tcsetattr(0, TCSANOW, &orig_termios);
-}
-
-void set_conio_terminal_mode()
-{
-	struct termios new_termios;
-
-	if (termios_status == 0)
-	{
-		/* take two copies - one for now, one for later */
-		tcgetattr(0, &orig_termios);
-		termios_status = 1;
-	}
-	memcpy(&new_termios, &orig_termios, sizeof(new_termios));
-
-	/* register cleanup handler, and set the new terminal mode */
-	atexit(reset_terminal_mode);
-	cfmakeraw(&new_termios);
-	tcsetattr(0, TCSANOW, &new_termios);
-}
-
-int get_last_key()
-{
-	int r;
-	uchar c;
-	if ((r = read(0, &c, sizeof(c))) < 0) {
-		return r;
-	}
-	else {
-		reset_terminal_mode();
-		return c;
-	}
-}
-
-
-
-#else
-#error "Unable to define get_key( ) for an unknown OS."
 #endif
+
+
 
 namespace zz
 {
 
-	double get_real_time()
+	//////////////////////////////// Timer class ////////////////////////////////////
+	/// <summary>
+	/// Updates the current timestamp.
+	/// </summary>
+	void Timer::update()
+	{
+		timestamp_ = get_real_time();
+	}
+
+	
+	Timer::Timer()
+	{
+		update();
+	}
+
+	Timer::~Timer()
+	{
+		timestamp_ = 0;
+	}
+
+	double Timer::get_real_time()
 	{
 #if defined(_WIN32)
 		FILETIME tm;
@@ -171,28 +165,6 @@ namespace zz
 #endif
 	}
 
-	//////////////////////////////// Timer class ////////////////////////////////////
-	/// <summary>
-	/// Updates the current timestamp.
-	/// </summary>
-	void Timer::update()
-	{
-		timestamp_ = get_real_time();
-	}
-
-	/// <summary>
-	/// Default constructor, will call update() to record current timestamp.
-	/// </summary>
-	Timer::Timer()
-	{
-		update();
-	}
-
-	Timer::~Timer()
-	{
-		timestamp_ = 0;
-	}
-
 	/// <summary>
 	/// Get the time elapsed in ms since last update.
 	/// </summary>
@@ -221,71 +193,347 @@ namespace zz
 		return (get_real_time() - timestamp_) * 1000000.0;
 	}
 
+
+	//////////////////////////////// miscellaneous functions ////////////////////////////////////
+
+	
 	/// <summary>
-	/// Get asynchronized keyboard press.
+	/// Check if stdout is in terminal/console
 	/// </summary>
-	/// <returns>
-	/// The pressed key value.
-	/// </returns>
-	int get_key()
+	/// <returns></returns>
+	int is_atty()
 	{
-#if defined(_WIN32)
-		return _getch();
-
-#elif defined(__unix__) || defined(__unix) || defined(unix) || (defined(__APPLE__) && defined(__MACH__))
-		int buf = -1;
-		struct termios old = { 0 };
-		if (tcgetattr(0, &old) < 0)
-			perror("tcsetattr()");
-		old.c_lflag &= ~ICANON;
-		old.c_lflag &= ~ECHO;
-		old.c_cc[VMIN] = 1;
-		old.c_cc[VTIME] = 0;
-		if (tcsetattr(0, TCSANOW, &old) < 0)
-			perror("tcsetattr ICANON");
-		if (read(0, &buf, 1) < 0)
-			perror("read()");
-		old.c_lflag |= ICANON;
-		old.c_lflag |= ECHO;
-		if (tcsetattr(0, TCSADRAIN, &old) < 0)
-			perror("tcsetattr ~ICANON");
-		return (buf);
-
-#else
-		return -1;		// failed
+#if ZULIB_OS == 1
+		return isatty(fileno(stdout));
+#elif ZULIB_OS == 0
+		return _isatty(_fileno(stdout));
 #endif
 	}
 
+#if ZULIB_OS == 1
+	// linux termios manipulation
+	static inline int rd(const int fd)
+	{
+		const int RD_EOF = -1;
+		const int RD_EIO = -2;
+
+		unsigned char   buffer[4];
+		ssize_t         n;
+
+
+		while (1) {
+
+
+			n = read(fd, buffer, 1);
+			if (n > (ssize_t)0)
+				return buffer[0];
+
+
+			else
+			if (n == (ssize_t)0)
+				return RD_EOF;
+
+
+			else
+			if (n != (ssize_t)-1)
+				return RD_EIO;
+
+
+			else
+			if (errno != EINTR && errno != EAGAIN && errno != EWOULDBLOCK)
+				return RD_EIO;
+		}
+	}
+
+
+	static inline int wr(const int fd, const char *const data, const size_t bytes)
+	{
+		const char       *head = data;
+		const char *const tail = data + bytes;
+		ssize_t           n;
+
+
+		while (head < tail) {
+
+
+			n = write(fd, head, (size_t)(tail - head));
+			if (n >(ssize_t)0)
+				head += n;
+
+
+			else
+			if (n != (ssize_t)-1)
+				return EIO;
+
+
+			else
+			if (errno != EINTR && errno != EAGAIN && errno != EWOULDBLOCK)
+				return errno;
+		}
+
+
+		return 0;
+	}
+
+#endif
 
 	/// <summary>
-	/// Detect keyboard hit, no wait
+	/// Get cursor position in terminal/console
 	/// </summary>
-	/// <returns>The key pressed or -1 if not(ASC-II not guaranteed, platform specific).</returns>
+	/// <param name="row">The row.</param>
+	/// <param name="col">The col.</param>
+	int get_cursor_position(int *row, int *col)
+	{
+		std::cout.flush();
+#if ZULIB_OS == 0
+		CONSOLE_SCREEN_BUFFER_INFO csbi;
+		if (GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi)) 
+		{
+			*col = csbi.dwCursorPosition.X;
+			*row = csbi.dwCursorPosition.Y;
+			return 0;
+		}
+		return -1;
+#elif ZULIB_OS == 1
+
+		// first get current terminal id
+		const char *dev;
+		int         fd;
+
+
+		dev = ttyname(STDIN_FILENO);
+		if (!dev)
+			dev = ttyname(STDOUT_FILENO);
+		if (!dev)
+			dev = ttyname(STDERR_FILENO);
+		if (!dev) {
+			errno = ENOTTY;
+			return -1;
+		}
+
+
+		do {
+			fd = open(dev, O_RDWR | O_NOCTTY);
+		} while (fd == -1 && errno == EINTR);
+		if (fd == -1)
+			return -1;
+
+
+		// try to get the cursor position
+		int tty = fd;
+
+
+		struct termios  saved, temporary;
+		int             retval, result, rows, cols, saved_errno;
+
+
+		/* Bad tty? */
+		if (tty == -1)
+			return ENOTTY;
+
+
+		saved_errno = errno;
+
+
+		/* Save current terminal settings. */
+		do {
+			result = tcgetattr(tty, &saved);
+		} while (result == -1 && errno == EINTR);
+		if (result == -1) {
+			retval = errno;
+			errno = saved_errno;
+			return retval;
+		}
+
+
+		/* Get current terminal settings for basis, too. */
+		do {
+			result = tcgetattr(tty, &temporary);
+		} while (result == -1 && errno == EINTR);
+		if (result == -1) {
+			retval = errno;
+			errno = saved_errno;
+			return retval;
+		}
+
+
+		/* Disable ICANON, ECHO, and CREAD. */
+		temporary.c_lflag &= ~ICANON;
+		temporary.c_lflag &= ~ECHO;
+		temporary.c_cflag &= ~CREAD;
+
+
+		/* This loop is only executed once. When broken out,
+		* the terminal settings will be restored, and the function
+		* will return retval to caller. It's better than goto.
+		*/
+		do {
+
+
+			/* Set modified settings. */
+			do {
+				result = tcsetattr(tty, TCSANOW, &temporary);
+			} while (result == -1 && errno == EINTR);
+			if (result == -1) {
+				retval = errno;
+				break;
+			}
+
+
+			/* Request cursor coordinates from the terminal. */
+			retval = wr(tty, "\033[6n", 4);
+			if (retval)
+				break;
+
+
+			/* Assume coordinate reponse parsing fails. */
+			retval = EIO;
+
+
+			/* Expect an ESC. */
+			result = rd(tty);
+			if (result != 27)
+				break;
+
+
+			/* Expect [ after the ESC. */
+			result = rd(tty);
+			if (result != '[')
+				break;
+
+
+			/* Parse rows. */
+			rows = 0;
+			result = rd(tty);
+			while (result >= '0' && result <= '9') {
+				rows = 10 * rows + result - '0';
+				result = rd(tty);
+			}
+
+
+			if (result != ';')
+				break;
+
+
+			/* Parse cols. */
+			cols = 0;
+			result = rd(tty);
+			while (result >= '0' && result <= '9') {
+				cols = 10 * cols + result - '0';
+				result = rd(tty);
+			}
+
+			if (result != 'R')
+				break;
+
+			/* Success! */
+			if (row)
+				*row = rows;
+
+			if (col)
+				*col = cols;
+
+			retval = 0;
+		} while (0);
+
+
+		/* Restore saved terminal settings. */
+		do {
+			result = tcsetattr(tty, TCSANOW, &saved);
+		} while (result == -1 && errno == EINTR);
+		if (result == -1 && !retval)
+			retval = errno;
+
+
+		/* Done. */
+		return retval;
+
+#endif
+	}
+
+	/// <summary>
+	/// Set cursor positions at specified (row, col).
+	/// </summary>
+	/// <param name="row">The row.</param>
+	/// <param name="col">The col.</param>
+	void set_cursor_position(int row, int col)
+	{
+		std::cout.flush();
+#if ZULIB_OS == 0
+		//Initialize the coordinates
+		COORD coord = { col, row };
+		//Set the position
+		SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), coord);
+#elif ZULIB_OS == 1
+		std::cout << "\033[" << (row + 1) << ":" << (col+1) << "H";
+		std::cout.flush();
+#endif
+	}
+	
+	void sleep(const int milliseconds) {
+#if ZULIB_OS == 1
+		struct timespec tv;
+		tv.tv_sec = milliseconds/1000;
+		tv.tv_nsec = (milliseconds%1000)*1000000;
+		nanosleep(&tv,0);
+#elif ZULIB_OS==0
+		Sleep(milliseconds);
+#endif
+	}
+
+#if ZULIB_OS == 1
+	// toggle terminal mode in unix systems, for any key press to work
+	void change_terminal_mode(int dir)
+	{
+		static struct termios oldt, newt;
+
+		if (dir == 1)
+		{
+			tcgetattr(STDIN_FILENO, &oldt);
+			newt = oldt;
+			newt.c_lflag &= ~(ICANON | ECHO);
+			tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+		}
+		else
+			tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+	}
+#endif
+
+	/// <summary>
+	/// Detect keyboard hit, no block
+	/// </summary>
+	/// <returns>The key pressed or -1 if not(ASC-II not guaranteed, OS specific).</returns>
 	int kb_hit()
 	{
-#if defined(_WIN32)
+#if ZULIB_OS == 0
 		if (_kbhit())
 			return _getch();
 		else
 			return -1;
 
-#elif defined(__unix__) || defined(__unix) || defined(unix) || (defined(__APPLE__) && defined(__MACH__))
+#elif ZULIB_OS == 1
+		change_terminal_mode(1);
 
+		struct timeval tv;
+		fd_set rdfs;
 
-		//set_conio_terminal_mode();
+		tv.tv_sec = 0;
+		tv.tv_usec = 0;
 
-		struct timeval tv = { 0L, 0L };
-		fd_set fds;
-		FD_ZERO(&fds);
-		FD_SET(0, &fds);
-		if (select(1, &fds, NULL, NULL, &tv))
-		{
-			return get_last_key();
-		}
+		FD_ZERO(&rdfs);
+		FD_SET (STDIN_FILENO, &rdfs);
+
+		select(STDIN_FILENO+1, &rdfs, NULL, NULL, &tv);
+
+		int ret;
+		if (FD_ISSET(STDIN_FILENO, &rdfs))
+			ret = getchar();
 		else
-		{
-			return -1;
-		}
+			ret = -1;
+
+		change_terminal_mode(0);
+		return ret;
+
 
 #else
 		return -1;		// unsupported OS
@@ -296,12 +544,9 @@ namespace zz
 	int waitkey(double ms)
 	{
 		int key = -1;
-		double start = get_real_time();
+		double start = Timer::get_real_time();
 		double end = start + ms / 1000;
 
-#if defined(__unix__) || defined(__unix) || defined(unix) || (defined(__APPLE__) && defined(__MACH__))
-		set_conio_terminal_mode();
-#endif
 
 		if (ms <= 0)
 		{
@@ -313,19 +558,72 @@ namespace zz
 		{
 			key = kb_hit();
 			//printf("%d", (int)get_elapsed_time_ms(start));
-			if (get_real_time() >= end)
+			sleep(1);
+			if (Timer::get_real_time() >= end)
 			{
 				break;
 			}
 		}
-		//std::cin.get();
-#if defined(__unix__) || defined(__unix) || defined(unix) || (defined(__APPLE__) && defined(__MACH__))
-		reset_terminal_mode();
-#endif
+
 		return key;
 	}
 
+	ProgBar::ProgBar(int size, const char* message)
+	{
+		if (size < 1)
+		{
+			throw zz::ArgException("ProgBar: task size < 1, invalid!");
+			hide_ = 1;
+			size_ = 0;
+			return;
+		}
 
+		size_ = size;
+		progress_ = 0;
+		if (is_atty())
+			hide_ = 0;
+		else
+			hide_ = 1;
+
+		if (message != NULL)
+		{
+			std::cout << message << std::endl;
+		}
+
+	}
+
+	ProgBar::~ProgBar()
+	{
+		std::cout << std::endl;
+	}
+
+	void ProgBar::step(int step)
+	{
+		if (!is_atty())
+			return;
+
+		progress_ += step;
+		if (progress_ < 0) progress_ = 0;
+		if (progress_ > size_) progress_ = size_;
+		int percent = progress_ * 100 / size_;
+
+		const int width = 57;
+		char buf[width];
+
+		// buf: [=======>        ] \0
+		memset(buf, (int)' ', width);
+		buf[0] = '[';
+		buf[width - 1] = '\0';
+
+
+		int pos = max(percent / 2, 0);
+		memset(buf+1, (int)'=', pos);
+		buf[pos + 1] = '>';
+		buf[52] = ']';
+
+		std::cout << "\r" << buf << "[ " << percent << "% ] [" << progress_ << "/" << size_ << "]";
+		std::cout.flush();
+	}
 
 
 	BaseFile::BaseFile()
@@ -371,37 +669,38 @@ namespace zz
 		}
 		else
 		{
-			warning("File stream already opened!");
+			throw RuntimeException("Unexpected file stream already opened!");
+			close();
+			fp_.open(path_.c_str(), openmode_);
 		}
+
+		if (!fp_.is_open())
+			throw IOException(TO_STRING("Failed to open file: " << path_));
 	}
 
-
-	TextFile::~TextFile()
+	TextFile::TextFile()
 	{
 
 	}
 
-	uint64 TextFile::count_lines()
+	int TextFile::count_lines()
 	{
-		const int bufSize = 1024 * 1024;	// using 1MB buffer
-		char* buf = new (std::nothrow) char[bufSize];
-		if (!buf)
-		{
-			error("Memory allocation : failed to create buffer.");
-		}
-
 		std::ifstream fread(path_.c_str());
 		if (!fread.is_open())
 		{
-			error("Failed to open file.");
+			throw IOException("Failed to open file to count lines.");
+			return -1;
 		}
 
-		uint64 ct = 0;
+		const int bufSize = 1024 * 1024;	// using 1MB buffer
+		std::vector<char> buf(bufSize);
+
+		int ct = 0;
 		int nbuf = 0;
 		char last = 0;
 		do
 		{
-			fread.read(buf, bufSize);
+			fread.read(&buf.front(), bufSize);
 			nbuf = static_cast<int>(fread.gcount());
 			for (int i = 0; i < nbuf; i++)
 			{
@@ -416,8 +715,6 @@ namespace zz
 		if (last != '\n')
 			ct++;
 
-		delete buf;
-		fread.close();
 		return ct;
 	}
 
@@ -449,7 +746,7 @@ namespace zz
 
 		if (n < 0)
 		{
-			warning("Seek back to the first line");
+			Warning("n < 0, seek back to the first line");
 			return 0;
 		}
 
@@ -479,10 +776,6 @@ namespace zz
 		openmode_ |= std::ios_base::binary;
 	}
 
-	BinaryFile::~BinaryFile()
-	{
-
-	}
 
 
 	String Path::get_cwd()
@@ -491,7 +784,7 @@ namespace zz
 		char* buffer = NULL;
 		if ((buffer = _getcwd(NULL, 0)) == NULL)
 		{
-			Warning("Failed to get current working directory, return default './'");
+			throw IOException("Failed to get current working directory, try use default './' instead");
 			return String("./");
 		}
 		else
@@ -520,7 +813,7 @@ namespace zz
 		}
 		else
 		{
-			Warning("Failed to get current working directory, return default './'");
+			throw IOException("Failed to get current working directory, try use default './' instead");
 			return String("./");
 		}
 #else
@@ -561,7 +854,7 @@ namespace zz
 		} while (!rBuf);
 
 		
-		Warning("Failed to get current working directory, return default './'");
+		throw IOException("Failed to get current working directory, try use default './' instead");
 		return String("./");
 
 #endif
@@ -579,7 +872,7 @@ namespace zz
 		DWORD retval = GetFullPathNameA(relativePath.c_str(), siz, buffer, 0);
 		if (retval == 0)
 		{
-			Warning("Failed to get realpath with code: " << GetLastError());
+			throw IOException(TO_STRING("Failed to get realpath with code: " << GetLastError()));
 			return relativePath;
 		}
 		else if (retval > siz)
@@ -590,7 +883,7 @@ namespace zz
 			buffer = (char*)malloc(siz);
 			if (!buffer)
 			{
-				Warning("Failed to allocate memory for path buffer!");
+				throw RuntimeException("Failed to allocate memory for path buffer!");
 				return relativePath;
 			}
 
@@ -598,7 +891,7 @@ namespace zz
 			if (retval > siz)
 			{
 				// There must be some problem
-				Warning("Failed to get realpath, may be too lomg!");
+				throw RuntimeException("Failed to get realpath, may be too lomg!");
 				return relativePath;
 			}
 		}
@@ -619,7 +912,7 @@ namespace zz
 		}
 		else
 		{
-			Warning("Failed to get realpath!");
+			throw IOException("Failed to get realpath!");
 			return relativePath;
 		}
 #else
@@ -633,7 +926,7 @@ namespace zz
 		}
 		else
 		{
-			Warning("Failed to get realpath!");
+			throw IOException("Failed to get realpath!");
 			return relativePath;
 		}
 #endif
@@ -716,14 +1009,11 @@ namespace zz
 	{
 		std::replace(orig.begin(), orig.end(), '\\', '/');
 
-		struct both_slashes {
-			bool operator()(char a, char b) const {
-				return a == '/' && b == '/';
-			}
-		};
-
-		orig.erase(std::unique(orig.begin(), orig.end(), both_slashes()), orig.end());
-
+		size_t pos;
+		while ((pos = orig.find("//")) != String::npos)
+		{
+			orig.erase(orig.begin() + pos);
+		}
 
 		return orig;
 	}
@@ -807,6 +1097,7 @@ namespace zz
 		return false;
 	}
 
+	
 	int Dir::mk_dir(String dir)
 	{
 		Path p(dir);
@@ -847,7 +1138,7 @@ namespace zz
 
 		if (Path::is_directory(path) < 1)
 		{
-			Warning(path << " is not a valid directory");
+			throw IOException(TO_STRING(path << " is not a valid directory"));
 			String dir = Path(path).get_dir();
 			if (Path::is_directory(dir))
 			{
@@ -855,7 +1146,7 @@ namespace zz
 			}
 			else
 			{
-				Error("Failed to solve problem caused by path: " << path);
+				throw RuntimeException(TO_STRING("Failed to solve problem caused by path: " << path));
 			}
 		}
 		
@@ -908,7 +1199,7 @@ namespace zz
 		
 		if (dir == NULL)
 		{
-			Warning("Cannot open directory: " << root_ << " to read!");
+			throw zz::IOException(TO_STRING("Cannot open directory: " << root_ << " to read!"));
 			return;
 		}
 		struct dirent *entry;
@@ -947,7 +1238,7 @@ namespace zz
 		}
 
 		if (closedir(dir) != 0)
-			Error("Cannot close directory: " << root_ );
+			throw IOException(TO_STRING("Cannot close directory: " << root_));
 
 #endif
 	}

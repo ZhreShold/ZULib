@@ -17,13 +17,13 @@
 /***********************************************************************/
 
 #include "zuLib.hpp"
-using namespace zz;
 
 void test_time()
 {
 	Println("\nTesting timer\n");
-	Timer t;
-	waitkey(1000);
+	zz::Timer t;
+	int key = zz::waitkey(100000);
+	Println("KEY: " << key);
 	Println("Time waited: " << t.get_elapsed_time_ms() << "ms");
 }
 
@@ -32,15 +32,36 @@ void test_msg()
 	Println("\nTesting messages\n");
 	Print("slk\n");
 	Println("newline" << "sljflsd int: " << 1 << " double: " << 2.120192354534534 << " end it");
+	Println_d("This message will only shown in debug mode!");
 	Warning("warning content with number: " << 21);
 	Error("Test error stop");
+}
+
+void test_throw()
+{
+	//throw zz::Exception("throw here!");
+	//throw zz::WarnException("warning exception test!");
+	Warning("something should not thrown if ZULIB_STRICT_WARNING is not defined.");
+}
+
+void test_exception()
+{
+	try
+	{
+		test_throw();
+	}
+	catch (zz::Exception ex)
+	{
+		Println(ex.what() << " catched!");
+		abort();
+	}
 }
 
 void test_file()
 {
 	Println("\nTesting text file\n");
-	TextFile tf("../../LICENSE");
-	Timer t;
+	zz::TextFile tf("../../LICENSE");
+	zz::Timer t;
 	Println(tf.count_lines());
 	Println("Time elapsed: " << t.get_elapsed_time_ms() << "ms");
 
@@ -83,11 +104,11 @@ void test_dir()
 	Println("extension: " << p.get_extension());
 
 	Println("\nTest dir function");
-	Timer t;
+	zz::Timer t;
 	zz::Dir dir = zz::Dir("../../", 1);
 	Println("Creation time: " << t.get_elapsed_time_ms() << "ms");
 	std::vector<String> files = dir.get_files();
-	std::vector<Dir> subfolders = dir.get_subfolders();
+	std::vector<zz::Dir> subfolders = dir.get_subfolders();
 	//for (size_t i = 0; i < files.size(); i++)
 	//{
 	//	Println("Sub files: " << files[i]);
@@ -119,16 +140,54 @@ void test_dir()
 	Println(zz::Dir::mk_dir("../../newfolder/newfolder2/newfolder3"));
 }
 
+void test_progbar()
+{
+	Println("Testing progress bar!");
+	zz::ProgBar pb(10000, "I'm progress bar");
+	for (int i = 0; i < 10000; i++)
+	{
+		pb.step(1);
+	}
+}
+
+
+
+void dev()
+{
+	for (int i = 0; i < 500; i++)
+	{
+		Println("NONSKDJFOIWEJFLJLKJDSLFKJ");
+	}
+	Println("ljsldjfowijefljsldjf");
+	Println("ljsldjfowijefljsldjf");
+	Println("ljsldjfowijefljsldjf");
+	Println("ljsldjfowijefljsldjf");
+	Println("ljsldjfowijefljsldjf");
+	Println("ljsldjfowijefljsldjf");
+	Println("ljsldjfowijefljsldjf");
+	int x;
+	int y;
+	zz::get_cursor_position(&y, &x);
+	Println("x: " << x << "y:" << y);
+	zz::set_cursor_position(y - 2, x);
+	std::cout << "\r                            " << std::endl;
+	zz::set_cursor_position(y+2, x);
+	Println(".........................");
+}
+
 int main()
 {
 	test_time();
 	test_file();
 	test_dir();
-	test_msg();
+	//test_msg();
+	//test_progbar();
+	//dev();
+	test_exception();
 	
 
 #ifdef _DEBUG
-	hold_screen();
+	zz::hold_screen();
 #endif
 	return 0;
 }

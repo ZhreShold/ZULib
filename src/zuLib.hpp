@@ -19,6 +19,28 @@
 #ifndef _ZULIB_HPP_
 #define _ZULIB_HPP_
 
+// Configure verbosity of output messages.
+//
+// Define 'ZULIB_VERBOSITY' to: '0' to hide library messages (quiet mode).
+//                              '1' to output library messages on the console.
+//                              '2' to do as '1' + add extra warnings (may slow down the code!).
+#ifndef ZULIB_VERBOSITY
+#define ZULIB_VERBOSITY 1
+#elif !(ZULIB_VERBOSITY==0 || ZULIB_VERBOSITY==1 || ZULIB_VERBOSITY==2)
+#error ZULib: Configuration variable 'ZULIB_VERBOSITY' is badly defined.
+#error (should be { 0=quiet | 1=console | 3=console+ extra warnings}).
+#endif
+
+// Define 'ZULIB_STRICT_WARNING' to replace warning messages by exception throwns.
+//#define ZULIB_STRICT_WARNING
+
+// Define DEBUG if necessary
+//#define DEBUG
+
+/*-----------------------------------------------------------------------*/
+// --------------------DO NOT MODIFY ANYTHING BELOW----------------------//
+/*-----------------------------------------------------------------------*/
+
 #ifndef __cplusplus
 #  error ZULib.hpp header must be compiled as C++
 #endif
@@ -26,6 +48,7 @@
 #if defined(_MSC_VER) && _MSC_VER > 1400
 #define _CRT_SECURE_NO_WARNINGS // suppress warnings about fopen() and similar "unsafe" functions defined by MS
 #endif
+
 
 
 #include <string>
@@ -36,6 +59,9 @@
 #include <sstream>
 #include <cstdlib>
 #include <cmath>
+#include <exception>
+
+
 
 
 
@@ -60,59 +86,197 @@ typedef std::string			String;		//!< STL string
 typedef std::vector<int32>	Veci;		//!< signed 32-bit integer STL vector
 typedef std::vector<String> Vecstr;		//!< STL string STL vector
 
+//////////////////////////// CONVENIENT MACROS ////////////////////////////
 
-// ----------------------- Error/Warn/Info handling ---------------------//
+// using stringstream hack to convert chain input to std::string
+#define TO_STRING( x ) (dynamic_cast< std::ostringstream & >( std::ostringstream() << std::dec << x).str())
 
-enum EXIT_STATUS { FATAL_ERROR = -1, OKAY = 0 };
+// print error and abort
+#define Error(err) (zz::error(TO_STRING(err)))
 
-inline void error(const String &msg)
-{
-	std::cerr << "[Error] - " << msg << std::endl;
-#if (defined _DEBUG) || (defined DEBUG) || (defined NDEBUG)
-	std::cerr << "Error captured, press enter to exit!" << std::endl;
-	std::cin.ignore();
+#ifndef ZULIB_STRICT_WARNING
+#if (ZULIB_VERBOSITY == 1 || ZULIB_VERBOSITY == 2)
+// print warning that some problem is solved automatically, continue
+#define Warning(warn) (zz::warning(TO_STRING(warn)))
+#if (ZULIB_VERBOSITY == 2)
+// extra warning, may slow down speed
+#define Warning_extra(warn) Warning(warn)
 #endif
-	exit(FATAL_ERROR);
-}
-
-inline void warning(const String &msg)
-{
-	std::cerr << "[Warning] - " << msg << std::endl;
-}
-
-inline void info(const String &msg, bool newline = true)
-{
-	std::cout << msg;
-	if (newline)
-	{
-		std::cout << std::endl;
-	}
-}
-
-inline void info_debug(const String &msg, bool newline = true)
-{
-#if (defined _DEBUG) || (defined DEBUG) || (defined NDEBUG)
-	std::cout << msg;
-	if (newline)
-	{
-		std::cout << std::endl;
-	}
+#else
+// quite mode, no warning message
+#define Warning(warn) do {} while(0)
+#define Warning_extra(warn) do {} while(0)
 #endif
-}
+#else
+#define Warning(warn) (throw zz::WarnException(TO_STRING(warn)))
 
-#define SSTR( x ) (dynamic_cast< std::ostringstream & >( std::ostringstream() << std::dec << x).str())
-// print error and throw
-#define Error(err) (error(SSTR(err)))
-// print warning, continue
-#define Warning(warn) (warning(SSTR(warn)))
-#define Print(msg) (info(SSTR(msg), false))
-#define Println(msg) (info(SSTR(msg), true))
-#define Print_d(msg) (info_debug(SSTR(msg), false))
-#define Println_d(msg) (info_debug(SSTR(msg), true))
+#define Warning_extra(warn) Warning(warn)
+#endif
+
+
+// print message
+#define Print(msg) (zz::info(TO_STRING(msg), false))
+
+// print message, start a new line
+#define Println(msg) (zz::info(TO_STRING(msg), true))
+
+// same as Print when you want print in debug mode only
+#define Print_d(msg) (zz::info_debug(TO_STRING(msg), false))
+
+// same as Println when you want print in debug mode only
+#define Println_d(msg) (zz::info_debug(TO_STRING(msg), true))
 
 namespace zz
 {
+	// ----------------------- Exception/Error/Warn handling ---------------------//
 
+	
+	/// <summary>
+	/// ZULib genreal exception class
+	/// <para>
+	/// Instances of Exceptions will be thrown when function call encountered errors
+	/// </para>
+	/// <para>Exception: base class of all exceptions thrown by ZULib, itself will not be thrown.</para>
+	/// <para>One of the following specific exceptions will be thrown.</para>
+	/// <para>&#160;</para>
+	/// <para>1. ArgException: thrown when one of arguments is invalid.</para>
+	/// <para>&#160;</para>
+	/// <para>2. IOException: thrown when IO operation encountered a problem.</para>
+	/// <para>&#160;</para>
+	/// <para>3. RuntimeException: thrown when unexpected error happened.</para>
+	/// <para>&#160;</para>
+	/// <para>4. WarnException: thrown when warning happened and ZULIB_STRICT_WARNING defined.</para>
+	/// <para>&#160;</para>
+	/// <para>5. MemException: thrown when memory issue occured.
+	/// Memory problem is fatal, should catch and terminate in general cases.</para>
+	/// </summary>
+	class Exception : public std::exception
+	{
+	public:
+		explicit Exception(const char* message, const char* prefix = "ZULib Exception : ")
+		{
+			message_ = std::string(prefix) + message;
+		};
+		explicit Exception(const std::string &message, const char* prefix = "ZULib Exception : ")
+		{
+			message_ = std::string(prefix) + message;
+		};
+		virtual ~Exception() throw() {};
+
+		const char* what() const throw() { return message_.c_str(); };
+	private:
+		std::string message_;
+	};
+
+	/// <summary>
+	/// Thrown when one of arguments is invalid.
+	/// </summary>
+	class ArgException : public Exception
+	{
+	public:
+		explicit ArgException(const char *message) : Exception(message, "ZULib Argument Exception : "){};
+		explicit ArgException(const std::string &message) : Exception(message, "ZULib Argument Exception : "){};
+	};
+
+	/// <summary>
+	/// Thrown when IO operation encountered a problem.
+	/// </summary>
+	class IOException : public Exception
+	{
+	public:
+		explicit IOException(const char *message) : Exception(message, "ZULib IO Exception : "){};
+		explicit IOException(const std::string &message) : Exception(message, "ZULib IO Exception : "){};
+	};
+
+	/// <summary>
+	/// Thrown when unexpected error happened.
+	/// </summary>
+	class RuntimeException : public Exception
+	{
+	public:
+		explicit RuntimeException(const char *message) : Exception(message, "ZULib Runtime Exception : "){};
+		explicit RuntimeException(const std::string &message) : Exception(message, "ZULib Runtime Exception : "){};
+	};
+
+	/// <summary>
+	/// Thrown when warning happened and ZULIB_STRICT_WARNING defined.
+	/// </summary>
+	class WarnException : public Exception
+	{
+	public:
+		explicit WarnException(const char *message) : Exception(message, "ZULib Warn Exception : "){};
+		explicit WarnException(const std::string &message) : Exception(message, "ZULib Warn Exception : "){};
+	};
+
+	/// <summary>
+	/// Thrown when memory issue occured.
+	/// Memory problem is fatal, should catch and terminate in general cases.
+	/// </summary>
+	class MemException : public Exception
+	{
+	public:
+		explicit MemException(const char *message) : Exception(message, "ZULib Memory Exception : "){};
+		explicit MemException(const std::string &message) : Exception(message, "ZULib Memory Exception : "){};
+	};
+
+
+	/// <summary>
+	/// Print fatal Error message and terminate the program.
+	/// </summary>
+	/// <param name="msg">The error message.</param>
+	inline void error(const String &msg)
+	{
+		std::cerr << "[Error] - " << msg << std::endl;
+		// hold the console in debug
+#if (defined _DEBUG) || (defined DEBUG) || (defined NDEBUG)
+		char key;
+		do
+		{
+			std::cerr << "Fatal error captured, press [Y/y] and enter to exit!" << std::endl;
+			std::cin >> key;
+		} while (!std::cin.fail() && key != 'y' && key != 'Y');
+#endif
+		exit(-1); // Don't want abort() which is disgusting.
+	}
+
+	/// <summary>
+	/// Print warning message if recovered by program automatically.
+	/// </summary>
+	/// <param name="msg">The warning message.</param>
+	inline void warning(const String &msg)
+	{
+		std::cerr << "[Warning] - " << msg << std::endl;
+	}
+
+	/// <summary>
+	/// Print message.
+	/// </summary>
+	/// <param name="msg">The message.</param>
+	/// <param name="newline">if set to <c>true</c> create [newline].</param>
+	inline void info(const String &msg, bool newline = true)
+	{
+		std::cout << msg;
+		if (newline)
+		{
+			std::cout << std::endl;
+		}
+	}
+
+	/// <summary>
+	/// Print message (debug only).
+	/// </summary>
+	/// <param name="msg">The message.</param>
+	/// <param name="newline">if set to <c>true</c> create [newline].</param>
+	inline void info_debug(const String &msg, bool newline = true)
+	{
+#if (defined _DEBUG) || (defined DEBUG) || (defined NDEBUG)
+		std::cout << msg;
+		if (newline)
+		{
+			std::cout << std::endl;
+		}
+#endif
+	}
 
 	// ----------------------------------- Math ---------------------------------//
 	/// <summary>
@@ -320,21 +484,26 @@ namespace zz
 
 	
 	// ----------------------------------- Time ---------------------------------//
-	
-	/// <summary>
-	/// Time is measured since an arbitrary and OS-dependent start time.
-	/// The returned real time is only useful for computing an elapsed time
-	/// between two calls to this function.
-	/// </summary>
-	/// <returns>Returns the real time, in seconds, or -1.0 if an error occurred.</returns>
-	double get_real_time();
 
+	/// <summary>
+	/// Timer class
+	/// </summary>
 	class Timer
 	{
 	public:
-		// default constructor, will call update() to record current timestamp.
+		/// <summary>
+		/// Default constructor, will call update() to record current timestamp.
+		/// </summary>
 		Timer();
 		~Timer();
+
+		/// <summary>
+		/// Time is measured since an arbitrary and OS-dependent start time.
+		/// The returned real time is only useful for computing an elapsed time
+		/// between two calls to this function.
+		/// </summary>
+		/// <returns>Returns the real time, in seconds, or -1.0 if an error occurred.</returns>
+		static double get_real_time();
 
 		// update current timestamp
 		void update();
@@ -349,10 +518,28 @@ namespace zz
 		double timestamp_;
 	};
 
-	// ----------------------------------- I/O ---------------------------------//
+	// ----------------------------------- Miscellaneous ---------------------------------//
 
 	/// <summary>
-	/// wait for the specficed ms until keypressed
+	/// Check if std::cout or stdout is accociated with terminal
+	/// </summary>
+	/// <returns>Non-zero if in terminal, 0 otherwise</returns>
+	int is_atty();
+
+	int get_cursor_position(int *row, int *col);
+
+	void set_cursor_position(int row, int col);
+
+	/// <summary>
+	/// Sleep for a given numbers of milliseconds. 
+	/// This function frees the CPU ressources during the sleeping time.
+	/// </summary>
+	/// <param name="milliseconds">The milliseconds to be wait for.</param>
+	void sleep(const int millisec);
+
+	/// <summary>
+	/// Wait for the specficed ms until any key pressed, no block.
+	/// Note that in some IDE's built in debug environment, you may have to press enter.
 	/// </summary>
 	/// <param name="ms">The ms to wait.</param>
 	/// <returns>The key pressed(ASC-II not guaranteed).</returns>
@@ -363,9 +550,22 @@ namespace zz
 	/// </summary>
 	inline void hold_screen()
 	{
-		info("Press any key to continue...");
+		Println("Press any key to continue...");
 		waitkey();
 	}
+
+	class ProgBar
+	{
+	public:
+		ProgBar(const int taskSize, const char* message = NULL);
+		~ProgBar();
+
+		void step(int step = 1);
+	private:
+		int progress_;
+		int size_;
+		int hide_;
+	};
 	
 	// --------------------------------- FILE IO -------------------------------//
 
@@ -379,25 +579,33 @@ namespace zz
 		enum FILE_STATUS { INIT = 0, NEW = 1, READ = 3, WRITE = 5, REWRITE = 7, APPEND = 15, };
 
 	public:
-		BaseFile();
 		BaseFile(String file, std::ios_base::openmode openmode = std::ios_base::in);
 		virtual ~BaseFile();
 
-		void open();
-		void open(String file, std::ios_base::openmode openmode = std::ios_base::in)
-		{ 
-			this->openmode_ = openmode; 
-			this->path_ = file;
-			open();
-		}
+		
+		/// <summary>
+		/// Check file open status
+		/// </summary>
+		/// <returns>true if opened successfully, false otherwise</returns>
 		bool is_open() { return fp_.is_open(); }
 
 	protected:
+		// hide public default constructor
+		BaseFile();
+
 		std::fstream	fp_;
 		String			path_;
 		int				flag_;
 		std::ios_base::openmode		openmode_;
-
+	private:
+		void open();
+		//void open(String file, std::ios_base::openmode openmode = std::ios_base::in)
+		//{
+		//	this->openmode_ = openmode;
+		//	this->path_ = file;
+		//	open();
+		//}
+		void close() { fp_.close(); };
 	};
 
 	/// <summary>
@@ -406,8 +614,12 @@ namespace zz
 	class TextFile : public BaseFile
 	{
 	public:
+		/// <summary>
+		/// Initializes a new instance of the <see cref="TextFile"/> class.
+		/// </summary>
+		/// <param name="file">The file path.</param>
+		/// <param name="openmode">The openmode.</param>
 		TextFile(String file, std::ios_base::openmode openmode = std::ios_base::in) : BaseFile(file, openmode){};
-		~TextFile();
 		
 		/// <summary>
 		/// Count number of lines in text file. Note that \r(CR) only deprecated(ancient) Mac OS won't be supported.
@@ -415,7 +627,7 @@ namespace zz
 		/// <returns>
 		/// Number of Lines
 		/// </returns>
-		uint64 count_lines();
+		int count_lines();
 
 		/// <summary>
 		/// Get next line of opened file
@@ -430,6 +642,9 @@ namespace zz
 		/// <param name="n">The n.</param>
 		/// <returns>The line jumped to</returns>
 		int goto_line(int n);
+	private:
+		// hide public default constructor
+		TextFile();
 	};
 
 	/// <summary>
@@ -438,10 +653,15 @@ namespace zz
 	class BinaryFile : public BaseFile
 	{
 	public:
+		/// <summary>
+		/// Initializes a new instance of the <see cref="BinaryFile"/> class.
+		/// </summary>
+		/// <param name="file">The file path.</param>
+		/// <param name="openmode">The openmode.</param>
+		BinaryFile(String file, std::ios_base::openmode openmode = std::ios::in) : BaseFile(file, openmode | std::ios_base::binary) {};
+	private:
+		// hide public default constructor
 		BinaryFile();
-		BinaryFile(String file, std::ios_base::openmode openmode = std::ios::in) : BaseFile(file, openmode) { openmode |= std::ios_base::binary; };
-		~BinaryFile();
-
 	};
 
 	// ------------------------------- OS DIRECTORY -----------------------------//
@@ -452,6 +672,10 @@ namespace zz
 	class Path
 	{
 	public:
+		/// <summary>
+		/// Initializes a new instance of the <see cref="Path"/> class.
+		/// </summary>
+		/// <param name="path">The path.</param>
 		Path(String path) { this->path_ = reform(path); };
 
 		/// <summary>
@@ -553,16 +777,30 @@ namespace zz
 		static bool wildcard_match(const char *first, const char *second);
 
 	private:
-		
+
 		String path_;
 	};
 
+	/// <summary>
+	/// OS directory list handler class
+	/// </summary>
 	class Dir
 	{
 	public:
-		Dir() { recursive_ = 0; showHidden_ = 0; };
+		/// <summary>
+		/// Initializes a new instance of the <see cref="Dir"/> class.
+		/// </summary>
+		/// <param name="path">The path.</param>
+		/// <param name="recurse">Recursive?</param>
+		/// <param name="showHidden">Show hidden files/directories?</param>
 		Dir(String path, int recurse = 0, int showHidden = 0) { search(path, recurse, showHidden); };
 
+		/// <summary>
+		/// Create the specified directory.
+		/// Will automatically create intermediate directories if necessary.
+		/// </summary>
+		/// <param name="dir">The dir.</param>
+		/// <returns></returns>
 		static int mk_dir(String dir);
 
 		/// <summary>
@@ -629,15 +867,20 @@ namespace zz
 		/// <returns>sub-folders</returns>
 		const std::vector<Dir>& get_subfolders() { return childs_; };
 
+		
+	private:
+		// hide default constructor
+		Dir() { recursive_ = 0; showHidden_ = 0; };
+
 		void search();
-		void search(String path, int recurse = 0, int showHidden = 0) 
-		{ 
-			set_root(path); 
+		void search(String path, int recurse = 0, int showHidden = 0)
+		{
+			set_root(path);
 			set_recursive(recurse);
 			set_show_hidden(showHidden);
-			search(); 
+			search();
 		};
-	private:
+
 		int		recursive_;
 		int		showHidden_;
 		String	root_;
