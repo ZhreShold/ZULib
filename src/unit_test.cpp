@@ -42,6 +42,7 @@ void test_throw()
 	//throw zz::Exception("throw here!");
 	//throw zz::WarnException("warning exception test!");
 	Warning("something should not thrown if ZULIB_STRICT_WARNING is not defined.");
+	throw zz::RuntimeException("Just throw it to test RuntimeException!");
 }
 
 void test_exception()
@@ -143,48 +144,49 @@ void test_dir()
 void test_progbar()
 {
 	Println("Testing progress bar!");
-	zz::ProgBar pb(10000, "I'm progress bar");
-	for (int i = 0; i < 10000; i++)
+	zz::ProgBar pb(100, "I'm progress bar");
+	for (int i = 0; i < pb.size(); i++)
 	{
+		zz::sleep(25);
 		pb.step(1);
+		// print messages 
+		Println("This is a message should be printed after progress finished: " << i);
+		try
+		{
+			throw zz::RuntimeException("break the progbar");
+		}
+		catch (zz::Exception ex)
+		{
+			Println(ex.what() << " Catched runtime!");
+		}
 	}
 }
 
-
-
-void dev()
+void test_terminal()
 {
-	for (int i = 0; i < 500; i++)
-	{
-		Println("NONSKDJFOIWEJFLJLKJDSLFKJ");
-	}
-	Println("ljsldjfowijefljsldjf");
-	Println("ljsldjfowijefljsldjf");
-	Println("ljsldjfowijefljsldjf");
-	Println("ljsldjfowijefljsldjf");
-	Println("ljsldjfowijefljsldjf");
-	Println("ljsldjfowijefljsldjf");
-	Println("ljsldjfowijefljsldjf");
-	int x;
-	int y;
-	zz::get_cursor_position(&y, &x);
-	Println("x: " << x << "y:" << y);
-	zz::set_cursor_position(y - 2, x);
-	std::cout << "\r                            " << std::endl;
-	zz::set_cursor_position(y+2, x);
-	Println(".........................");
+	Println("Is in terminal or file? : " << zz::is_atty());
 }
+
+void test_systemcall()
+{
+#if ZULIB_OS == 0
+	zz::system("dir /b");
+#elif ZULIB_OS == 1
+	zz::system("ls -a");
+#endif
+}
+
 
 int main()
 {
-	test_time();
-	test_file();
-	test_dir();
+	//test_time();
+	//test_file();
+	//test_dir();
 	//test_msg();
 	//test_progbar();
-	//dev();
-	test_exception();
-	
+	///test_exception();
+	//test_terminal();
+	test_systemcall();
 
 #ifdef _DEBUG
 	zz::hold_screen();

@@ -37,9 +37,34 @@
 // Define DEBUG if necessary
 //#define DEBUG
 
+// Manually define system type if you are confident, not recommanded for main-stream os
+// '0 = Microsoft Windows', '1 = Unix-like OS'
+//#define ZULIB_OS ?
+
 /*-----------------------------------------------------------------------*/
 // --------------------DO NOT MODIFY ANYTHING BELOW----------------------//
 /*-----------------------------------------------------------------------*/
+#ifndef ZULIB_OS
+#if defined(unix)        || defined(__unix)      || defined(__unix__) \
+	|| defined(linux) || defined(__linux) || defined(__linux__) \
+	|| defined(sun) || defined(__sun) \
+	|| defined(BSD) || defined(__OpenBSD__) || defined(__NetBSD__) \
+	|| defined(__FreeBSD__) || defined (__DragonFly__) \
+	|| defined(sgi) || defined(__sgi) \
+	|| (defined(__MACOSX__) || defined(__APPLE__)) \
+	|| defined(__CYGWIN__) || defined(__MINGW32__)
+#define ZULIB_OS 1
+#elif defined(_MSC_VER) || defined(WIN32)  || defined(_WIN32) || defined(__WIN32__) \
+	|| defined(WIN64) || defined(_WIN64) || defined(__WIN64__)
+#define ZULIB_OS 0
+#else
+#error Unable to support this unknown OS.
+#endif
+#elif !(ZULIB_OS==0 || ZULIB_OS==1)
+#error ZULIB: Invalid configuration variable 'ZULIB_OS'.
+#error (correct values are '0 = Microsoft Windows', '1 = Unix-like OS').
+#endif
+
 
 #ifndef __cplusplus
 #  error ZULib.hpp header must be compiled as C++
@@ -521,14 +546,32 @@ namespace zz
 	// ----------------------------------- Miscellaneous ---------------------------------//
 
 	/// <summary>
+	/// Avoid compiler warning messages due to unused parameters. Do nothing actually.
+	/// <note>Why? In different OS, same function may require different arguments.
+	/// If some parameters are not used, compilers will complain, just call it doing nothing is fine.
+	/// </note>
+	/// </summary>
+	/// <param name="">The stuff not to be used.</param>
+	template<typename T>
+	inline void unused(const T&) {}
+
+	/// <summary>
+	/// Execute an external system command.
+	/// </summary>
+	/// <note> This function is similar to std::system() but it does not open an extra console windows
+	///  on Windows - based systems.</note>
+	/// <param name="command">The C-string containing the command line to execute.</param>
+	/// <param name="moduleName">Name of the module.</param>
+	/// <returns>
+	/// Status value of the executed command, whose meaning is OS-dependent.
+	/// </returns>
+	int system(const char *const command, const char *const module_name = 0);
+
+	/// <summary>
 	/// Check if std::cout or stdout is accociated with terminal
 	/// </summary>
 	/// <returns>Non-zero if in terminal, 0 otherwise</returns>
 	int is_atty();
-
-	int get_cursor_position(int *row, int *col);
-
-	void set_cursor_position(int row, int col);
 
 	/// <summary>
 	/// Sleep for a given numbers of milliseconds. 
@@ -554,17 +597,48 @@ namespace zz
 		waitkey();
 	}
 
+	/// <summary>
+	/// Convenient progress bar class. 
+	/// When showing the progress of a task in for loop, you can do this:
+	/// <code>
+	/// ProgBar pb(taskSize, "example progress bar");
+	/// for (int i = 0; i &lt; pb.size(); i++)
+	/// {
+	///     do_something_here();
+	///     pb.step();
+	/// }
+	/// </code>
+	/// !!!Any information print to stdout and stderr will be hold and printed until progress finished.
+	/// </summary>
 	class ProgBar
 	{
 	public:
+		/// <summary>
+		/// Initializes a new instance of the <see cref="ProgBar"/> class.
+		/// </summary>
+		/// <param name="taskSize">Size of the task.</param>
+		/// <param name="message">The message if applicable.</param>
 		ProgBar(const int taskSize, const char* message = NULL);
 		~ProgBar();
 
 		void step(int step = 1);
+		int size() { return size_; };
 	private:
+		// hide default constructor
+		ProgBar();
+
+		// redirect stdout stderr
+		void redirect();
+		// restore default stdout stderr
+		void restore();
+
 		int progress_;
 		int size_;
 		int hide_;
+		std::stringstream outss_;
+		std::streambuf*   outbuf_;
+		std::stringstream errss_;
+		std::streambuf*   errbuf_;
 	};
 	
 	// --------------------------------- FILE IO -------------------------------//

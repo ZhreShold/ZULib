@@ -20,28 +20,9 @@
 #include <limits>
 #include <algorithm>
 #include <cctype>
+#include <cstring>
 
 
-#ifndef ZULIB_OS
-#if defined(unix)        || defined(__unix)      || defined(__unix__) \
-	|| defined(linux) || defined(__linux) || defined(__linux__) \
-	|| defined(sun) || defined(__sun) \
-	|| defined(BSD) || defined(__OpenBSD__) || defined(__NetBSD__) \
-	|| defined(__FreeBSD__) || defined (__DragonFly__) \
-	|| defined(sgi) || defined(__sgi) \
-	|| (defined(__MACOSX__) || defined(__APPLE__)) \
-	|| defined(__CYGWIN__) || defined(__MINGW32__)
-#define ZULIB_OS 1
-#elif defined(_MSC_VER) || defined(WIN32)  || defined(_WIN32) || defined(__WIN32__) \
-	|| defined(WIN64)    || defined(_WIN64) || defined(__WIN64__)
-#define ZULIB_OS 0
-#else
-#error Unable to support this unknown OS.
-#endif
-#elif !(ZULIB_OS==0 || ZULIB_OS==1)
-#error ZULIB: Invalid configuration variable 'ZULIB_OS'.
-#error (correct values are '0 = Microsoft Windows', '1 = Unix-like OS').
-#endif
 
 #if ZULIB_OS == 0
 #include <Windows.h>
@@ -194,13 +175,53 @@ namespace zz
 	}
 
 
-	//////////////////////////////// miscellaneous functions ////////////////////////////////////
-
 	
-	/// <summary>
-	/// Check if stdout is in terminal/console
-	/// </summary>
-	/// <returns></returns>
+	int system(const char *const command, const char *const moduleName)
+	{
+		unused(moduleName);
+#if ZULIB_OS==1
+		const unsigned int l = std::strlen(command);
+		if (l) {
+			char *const ncommand = new char[l + 16];
+			std::strncpy(ncommand, command, l);
+			std::strcpy(ncommand + l, " 2> /dev/null"); // Make command silent.
+			const int out_val = std::system(ncommand);
+			delete[] ncommand;
+			return out_val;
+		}
+		else return -1;
+#elif ZULIB_OS==0
+		PROCESS_INFORMATION pi;
+		STARTUPINFO si;
+		std::memset(&pi, 0, sizeof(PROCESS_INFORMATION));
+		std::memset(&si, 0, sizeof(STARTUPINFO));
+		GetStartupInfoA(&si);
+		si.cb = sizeof(si);
+		si.wShowWindow = SW_HIDE;
+		si.dwFlags |= SW_HIDE | STARTF_USESHOWWINDOW;
+		const BOOL res = CreateProcessA((LPCTSTR)moduleName, (LPTSTR)command, 0, 0, FALSE, 0, 0, 0, &si, &pi);
+		if (res) {
+			WaitForSingleObject(pi.hProcess, INFINITE);
+			CloseHandle(pi.hThread);
+			CloseHandle(pi.hProcess);
+			return 0;
+		}
+		else return std::system(command);
+#endif
+	}
+
+	void sleep(const int milliseconds) {
+#if ZULIB_OS == 1
+		struct timespec tv;
+		tv.tv_sec = milliseconds / 1000;
+		tv.tv_nsec = (milliseconds % 1000) * 1000000;
+		nanosleep(&tv, 0);
+#elif ZULIB_OS==0
+		Sleep(milliseconds);
+#endif
+	}
+
+
 	int is_atty()
 	{
 #if ZULIB_OS == 1
@@ -210,276 +231,6 @@ namespace zz
 #endif
 	}
 
-#if ZULIB_OS == 1
-	// linux termios manipulation
-	static inline int rd(const int fd)
-	{
-		const int RD_EOF = -1;
-		const int RD_EIO = -2;
-
-		unsigned char   buffer[4];
-		ssize_t         n;
-
-
-		while (1) {
-
-
-			n = read(fd, buffer, 1);
-			if (n > (ssize_t)0)
-				return buffer[0];
-
-
-			else
-			if (n == (ssize_t)0)
-				return RD_EOF;
-
-
-			else
-			if (n != (ssize_t)-1)
-				return RD_EIO;
-
-
-			else
-			if (errno != EINTR && errno != EAGAIN && errno != EWOULDBLOCK)
-				return RD_EIO;
-		}
-	}
-
-
-	static inline int wr(const int fd, const char *const data, const size_t bytes)
-	{
-		const char       *head = data;
-		const char *const tail = data + bytes;
-		ssize_t           n;
-
-
-		while (head < tail) {
-
-
-			n = write(fd, head, (size_t)(tail - head));
-			if (n >(ssize_t)0)
-				head += n;
-
-
-			else
-			if (n != (ssize_t)-1)
-				return EIO;
-
-
-			else
-			if (errno != EINTR && errno != EAGAIN && errno != EWOULDBLOCK)
-				return errno;
-		}
-
-
-		return 0;
-	}
-
-#endif
-
-	/// <summary>
-	/// Get cursor position in terminal/console
-	/// </summary>
-	/// <param name="row">The row.</param>
-	/// <param name="col">The col.</param>
-	int get_cursor_position(int *row, int *col)
-	{
-		std::cout.flush();
-#if ZULIB_OS == 0
-		CONSOLE_SCREEN_BUFFER_INFO csbi;
-		if (GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi)) 
-		{
-			*col = csbi.dwCursorPosition.X;
-			*row = csbi.dwCursorPosition.Y;
-			return 0;
-		}
-		return -1;
-#elif ZULIB_OS == 1
-
-		// first get current terminal id
-		const char *dev;
-		int         fd;
-
-
-		dev = ttyname(STDIN_FILENO);
-		if (!dev)
-			dev = ttyname(STDOUT_FILENO);
-		if (!dev)
-			dev = ttyname(STDERR_FILENO);
-		if (!dev) {
-			errno = ENOTTY;
-			return -1;
-		}
-
-
-		do {
-			fd = open(dev, O_RDWR | O_NOCTTY);
-		} while (fd == -1 && errno == EINTR);
-		if (fd == -1)
-			return -1;
-
-
-		// try to get the cursor position
-		int tty = fd;
-
-
-		struct termios  saved, temporary;
-		int             retval, result, rows, cols, saved_errno;
-
-
-		/* Bad tty? */
-		if (tty == -1)
-			return ENOTTY;
-
-
-		saved_errno = errno;
-
-
-		/* Save current terminal settings. */
-		do {
-			result = tcgetattr(tty, &saved);
-		} while (result == -1 && errno == EINTR);
-		if (result == -1) {
-			retval = errno;
-			errno = saved_errno;
-			return retval;
-		}
-
-
-		/* Get current terminal settings for basis, too. */
-		do {
-			result = tcgetattr(tty, &temporary);
-		} while (result == -1 && errno == EINTR);
-		if (result == -1) {
-			retval = errno;
-			errno = saved_errno;
-			return retval;
-		}
-
-
-		/* Disable ICANON, ECHO, and CREAD. */
-		temporary.c_lflag &= ~ICANON;
-		temporary.c_lflag &= ~ECHO;
-		temporary.c_cflag &= ~CREAD;
-
-
-		/* This loop is only executed once. When broken out,
-		* the terminal settings will be restored, and the function
-		* will return retval to caller. It's better than goto.
-		*/
-		do {
-
-
-			/* Set modified settings. */
-			do {
-				result = tcsetattr(tty, TCSANOW, &temporary);
-			} while (result == -1 && errno == EINTR);
-			if (result == -1) {
-				retval = errno;
-				break;
-			}
-
-
-			/* Request cursor coordinates from the terminal. */
-			retval = wr(tty, "\033[6n", 4);
-			if (retval)
-				break;
-
-
-			/* Assume coordinate reponse parsing fails. */
-			retval = EIO;
-
-
-			/* Expect an ESC. */
-			result = rd(tty);
-			if (result != 27)
-				break;
-
-
-			/* Expect [ after the ESC. */
-			result = rd(tty);
-			if (result != '[')
-				break;
-
-
-			/* Parse rows. */
-			rows = 0;
-			result = rd(tty);
-			while (result >= '0' && result <= '9') {
-				rows = 10 * rows + result - '0';
-				result = rd(tty);
-			}
-
-
-			if (result != ';')
-				break;
-
-
-			/* Parse cols. */
-			cols = 0;
-			result = rd(tty);
-			while (result >= '0' && result <= '9') {
-				cols = 10 * cols + result - '0';
-				result = rd(tty);
-			}
-
-			if (result != 'R')
-				break;
-
-			/* Success! */
-			if (row)
-				*row = rows;
-
-			if (col)
-				*col = cols;
-
-			retval = 0;
-		} while (0);
-
-
-		/* Restore saved terminal settings. */
-		do {
-			result = tcsetattr(tty, TCSANOW, &saved);
-		} while (result == -1 && errno == EINTR);
-		if (result == -1 && !retval)
-			retval = errno;
-
-
-		/* Done. */
-		return retval;
-
-#endif
-	}
-
-	/// <summary>
-	/// Set cursor positions at specified (row, col).
-	/// </summary>
-	/// <param name="row">The row.</param>
-	/// <param name="col">The col.</param>
-	void set_cursor_position(int row, int col)
-	{
-		std::cout.flush();
-#if ZULIB_OS == 0
-		//Initialize the coordinates
-		COORD coord = { col, row };
-		//Set the position
-		SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), coord);
-#elif ZULIB_OS == 1
-		std::cout << "\033[" << (row + 1) << ":" << (col+1) << "H";
-		std::cout.flush();
-#endif
-	}
-	
-	void sleep(const int milliseconds) {
-#if ZULIB_OS == 1
-		struct timespec tv;
-		tv.tv_sec = milliseconds/1000;
-		tv.tv_nsec = (milliseconds%1000)*1000000;
-		nanosleep(&tv,0);
-#elif ZULIB_OS==0
-		Sleep(milliseconds);
-#endif
-	}
 
 #if ZULIB_OS == 1
 	// toggle terminal mode in unix systems, for any key press to work
@@ -580,26 +331,58 @@ namespace zz
 
 		size_ = size;
 		progress_ = 0;
+
+		// detect if in console, otherwise disable this progress bar
 		if (is_atty())
+		{
 			hide_ = 0;
+			if (message != NULL)
+			{
+				std::cout << message << std::endl;
+			}
+
+			// redirect stdout and stderr, keep a backup
+			redirect();
+		}
 		else
 			hide_ = 1;
 
-		if (message != NULL)
-		{
-			std::cout << message << std::endl;
-		}
+		
 
 	}
 
 	ProgBar::~ProgBar()
 	{
+		if (hide_)
+			return;
+
+		// restore stdout and stderr
+		restore();
+
+		// important, create a new line from rewrite progress bar
 		std::cout << std::endl;
+
+		// flush buffered message to console
+		std::cout << outss_.str();
+		std::cerr << errss_.str();
+		
+	}
+
+	void ProgBar::redirect()
+	{
+		outbuf_ = std::cout.rdbuf(outss_.rdbuf());
+		errbuf_ = std::cerr.rdbuf(errss_.rdbuf());
+	}
+
+	void ProgBar::restore()
+	{
+		std::cout.rdbuf(outbuf_);
+		std::cerr.rdbuf(errbuf_);
 	}
 
 	void ProgBar::step(int step)
 	{
-		if (!is_atty())
+		if (hide_)
 			return;
 
 		progress_ += step;
@@ -621,8 +404,10 @@ namespace zz
 		buf[pos + 1] = '>';
 		buf[52] = ']';
 
+		restore();
 		std::cout << "\r" << buf << "[ " << percent << "% ] [" << progress_ << "/" << size_ << "]";
 		std::cout.flush();
+		redirect();
 	}
 
 
@@ -729,7 +514,7 @@ namespace zz
 			std::getline(fp_, line);
 			if (!line.empty())
 			{
-				return line.length();
+				return static_cast<int>(line.length());
 			}
 		}
 
